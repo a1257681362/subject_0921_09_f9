@@ -93,6 +93,13 @@ install:
   default-job-hours: 4
   default-start-hour: 9
 
+# F9 代理协议与结算快照
+settlement:
+  # 结算期到自动生成上月快照的开关（演示/纯手工环境可关）
+  auto-generate-enabled: true
+  # 自动生成时刻 cron（默认每月 1 日 02:17，避开整点）；已生成的期间不重算，重复触发幂等
+  auto-generate-cron: "0 17 2 1 * *"
+
 mybatis-plus:
   mapper-locations: classpath*:mapper/**/*.xml
   type-aliases-package: com.evops

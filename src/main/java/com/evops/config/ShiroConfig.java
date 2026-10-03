@@ -34,6 +34,9 @@ public class ShiroConfig {
         realm.addAccount("vendor1", "vendor1", "vendor");
         // F8：安装师傅（到场拍照打卡、完工回传）；调度匹配/改期用 demo/system 账号
         realm.addAccount("installer1", "installer1", "installer");
+        // F9：代理（只能查自己名下的分账账单，别家与平台分成看不见）
+        realm.addAccount("agent1", "agent1", "agent");
+        realm.addAccount("agent2", "agent2", "agent");
         return realm;
     }
 
