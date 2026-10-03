@@ -20,7 +20,7 @@
 - **外部回执**：挂回原单据；回执指向对冲单时自动回溯到根单。
 - **月度档期周历**：`/api/ledger/calendar?period=yyyy-MM` 一眼看哪块屏哪周空着。
 
-账号：演示账号 `demo / demo`，骨架账号 `bootstrap / bootstrap`（均为财务/系统视角，看全部客户、可审批）；F5 销售账号 `sales1 / sales1`、`sales2 / sales2`（只见名下客户），财务账号 `finance1 / finance1`；F6 巡查账号 `inspector1 / inspector1`（现场上报）、维护商账号 `vendor1 / vendor1`（回传处理结果），派单与复勘用 `demo / demo`；F8 安装师傅账号 `installer1 / installer1`（到场打卡、完工回传），安装派单匹配/改期用 `demo / demo`。
+账号：演示账号 `demo / demo`，骨架账号 `bootstrap / bootstrap`（均为财务/系统视角，看全部客户、可审批）；F5 销售账号 `sales1 / sales1`、`sales2 / sales2`（只见名下客户），财务账号 `finance1 / finance1`；F6 巡查账号 `inspector1 / inspector1`（现场上报）、维护商账号 `vendor1 / vendor1`（回传处理结果），派单与复勘用 `demo / demo`；F8 安装师傅账号 `installer1 / installer1`（到场打卡、完工回传），安装派单匹配/改期用 `demo / demo`；F9 代理账号 `agent1 / agent1`、`agent2 / agent2`（只能查自己账单），代理建档挂协议/调比例/出结算用 `demo / demo` 或 `finance1 / finance1`。
 
 ## F2：素材流水与多规格转档（f2-asset-transcode-1）
 
@@ -142,6 +142,24 @@
 
 资质匹配模块：安装派单（来源上刊单、点位作业性质、队与档期、到场/完工、准时）；资质匹配版本（自动生成/匹配/改期/到场/完工/取消逐事件 + 快照留底）；资质匹配状态（`PENDING / ASSIGNED / ARRIVED / COMPLETED / CANCELLED`，资质门槛以高空作业证 `VALID 且到期日不早于计划作业日` 为准）。
 
+## F9：代理协议与结算快照（f9-agent-settlement-1）
+
+月底财务拿计算器给代理算分账，一位一位按、按到手抖还出错——规则写进 evops-base：点位挂代理协议，比例与有效期定清楚；结算期一到按实际上刊流水给各方算钱，四舍五入到分，各方合计必须跟总额对平，差一分都标出来。
+
+业务口径：
+
+- **代理建档绑登录账号**：代理名全局唯一，绑定一个登录账号（`login_username` 全局唯一）作为「只能查自己账单」的隔离边界；状态 `ACTIVE 在册 / DISABLED 停用`（停用不参与新结算，历史账单照翻）。代理编号 `AG+序列`。
+- **点位挂代理协议**：一个代理在一个点位一份协议（同一代理同一点位重复挂存不进去），协议号 `AA+序列`；分账比例（0~1，四位小数）与起始生效结算期（自然月 `yyyy-MM`）在挂协议时定清楚；点位必须在营。协议状态 `ACTIVE 生效中 / TERMINATED 已终止`。
+- **代理协议版本**：挂协议即 v1（`INITIAL`，起始期默认当期、可指定未来期，不许追溯过去期）；**比例和有效期不在主档上改，全部落在只追加的版本链里**，历史永久可翻。版本状态 `PENDING 待生效 / EFFECTIVE 生效中 / SUPERSEDED 已被新版取代`。
+- **中途调整从下期生效，历史期不重算**：调比例（`ADJUST`）或终止（`TERMINATE`）一律另起版本，起始期最早只能是「下一结算期」（留空即下期），不能当期生效、不能追溯；同一协议同时只准有一个待生效版本，同一起始期只许一版。出结算时先把到期的待生效版转生效（上一版置 `SUPERSEDED`），当期即按新比例算。某结算期用哪版 = `effective_from_period <= 该期` 的最大版本号；命中终止版即该期起不再分账。
+- **按实际已上刊流水结算**：结算期一到，按该代理名下点位当期【实际落架】的授信上刊单（单点单周、金额取报价含税总额快照）归集流水，归属期按**落架月**固化；挂起未下架的单留待落架期结算，对冲更正单不形成流水。结算单号 `ST+序列`。
+- **四舍五入到分、差一分都标出来**：每张流水独立算代理分账 `HALF_UP(流水×比例)` 与平台分账原始 `HALF_UP(流水×(1-比例))`，行尾差 = 流水−代理−平台原始（差一分也落 `line_rounding_diff`）。结算头汇总：`total_commission + total_platform = total_revenue` 分毫不差，独立四舍五入产生的尾差 `rounding_diff` 单独标出并由**平台方兜底吸收**（`total_platform = 平台原始 + 尾差`），`balanced=1` 才是对平。
+- **结算即冻结，历史不重算**：结算时把协议版本号、分账比例全部复制进结算行（快照），之后调比例、换版都与历史账单无关；`(代理, 结算期)` 唯一，重复出结算幂等跳过，已结算期一个字不重算。结算头另存全量快照 JSON。
+- **代理只能查自己的账单**：`AgentViewer` 统一隔离——代理（agent 角色）只能看/导出 `login_username` 等于自己的代理账单，别家的看不见；挂协议、调比例、终止、出结算只许财务/系统（finance、system 角色）。
+- **月底拉账导出**：`GET /api/agent-settlements?period=yyyy-MM` 翻账单（代理只见自己），`.../export` 导出按期汇总 CSV（含流水、代理/平台分账、**尾差列**、是否对平），`.../{settlementNo}/export` 导出单张逐笔流水分账行 CSV（带 BOM，Excel 打开不乱码）。
+
+代理协议模块：代理协议（点位挂代理、状态）；代理协议版本（建档/调比例/终止逐版 + 比例与有效期，下期生效、历史不重算）；代理协议状态（`ACTIVE / TERMINATED`，版本 `PENDING / EFFECTIVE / SUPERSEDED`）。
+
 ## 接口一览（均在 /api 下，除 health/login 外需登录）
 
 | 动作 | 接口 |
@@ -188,6 +206,11 @@
 | 到场拍照打卡（照片必传） / 完工回传回执（回执必填，照片可选） | `POST /api/install/orders/{dispatchNo}/arrive`、`POST /api/install/orders/{dispatchNo}/complete`（均 multipart） |
 | 安装照片下载 | `GET /api/install/photos/{photoId}/download` |
 | 月末按队完工量/准时率 / 导出 CSV | `GET /api/install/reports/team-month?period=yyyy-MM`、`GET /api/install/reports/team-month/export?period=` |
+| 代理建档（绑登录账号）/ 停用 / 启用 / 翻查 / 详情 | `POST /api/agents`、`POST /api/agents/{agentNo}/disable`、`/enable`、`GET /api/agents`、`GET /api/agents/{agentNo}` |
+| 点位挂协议 / 翻查 / 详情 / 版本链 | `POST /api/agents/agreements`、`GET /api/agents/agreements`、`GET /api/agents/agreements/{agreementNo}`、`GET /api/agents/agreements/{agreementNo}/versions` |
+| 中途调比例（下期生效）/ 终止 | `POST /api/agents/agreements/{agreementNo}/adjust`、`POST /api/agents/agreements/{agreementNo}/terminate` |
+| 出结算（按实际落架流水分账）/ 账单翻查 / 详情 | `POST /api/agent-settlements`、`GET /api/agent-settlements?period=&agentNo=`、`GET /api/agent-settlements/{settlementNo}` |
+| 结算汇总导出 CSV / 单张逐笔分账行导出 CSV | `GET /api/agent-settlements/export?period=yyyy-MM`、`GET /api/agent-settlements/{settlementNo}/export` |
 
 授信上刊仍走上刊接口 `POST /api/orders`，请求体带 `quoteNo`（引用已提交报价单）即为授信单；落架/对冲接口不变，撤刊即释放额度。
 
@@ -198,6 +221,6 @@
 1. 执行 `mvn -q -DskipTests compile` 验证骨架构建。
 2. 执行 `mvn spring-boot:run` 启动应用；Spring Boot 会自动执行 `src/main/resources/schema.sql`。
 3. H2 数据文件默认写入工作区 `data/evops`。如需修改路径，编辑 `application.yml` 中的 `jdbc:h2:file:` 连接串。
-4. 验证：`mvn test`（11 项底账口径测试 + 7 项素材转档测试 + 8 项坐标建档测试 + 13 项年度刊例计价测试 + 13 项客户授信回款测试 + 10 项异常上报整改测试 + 11 项屏体播放排片测试 + 12 项安装派单资质匹配测试，独立内存 H2）。
+4. 验证：`mvn test`（11 项底账口径测试 + 7 项素材转档测试 + 8 项坐标建档测试 + 13 项年度刊例计价测试 + 13 项客户授信回款测试 + 10 项异常上报整改测试 + 11 项屏体播放排片测试 + 12 项安装派单资质匹配测试 + 12 项代理协议结算测试，独立内存 H2）。
 
 表结构交付副本：`docs/schema/evops.sql`（容器内根目录 `../../docs/schema` 不可写，交付副本置于工作区内），应与 `src/main/resources/schema.sql` 保持一致。

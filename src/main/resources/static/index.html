@@ -83,6 +83,7 @@
     <div class="tab" data-tab="rectify">⑪ 异常上报整改</div>
     <div class="tab" data-tab="playlist">⑫ 屏体播放排片</div>
     <div class="tab" data-tab="install">⑬ 安装派单资质</div>
+    <div class="tab" data-tab="agent">⑭ 代理协议结算</div>
   </div>
 
   <!-- 点位挂牌 -->
@@ -642,6 +643,82 @@
     </div>
     <table id="inReportTable"></table>
   </div>
+
+  <div class="panel" id="panel-agent">
+    <p class="muted">财务/系统 demo、finance1（看全部、可挂协议/调比例/出结算）；代理 agent1、agent2（只能查自己账单）。</p>
+
+    <h3>代理建档（绑登录账号，决定“只能查自己账单”边界）</h3>
+    <div class="grid">
+      <div><label>代理名称 *（全局唯一）</label><input id="agName"></div>
+      <div><label>绑定登录账号 *（全局唯一）</label><input id="agLogin" placeholder="agent1"></div>
+      <div><label>联系人</label><input id="agContact"></div>
+      <div><label>联系电话</label><input id="agPhone"></div>
+      <div style="align-self:end;display:flex;gap:8px">
+        <button onclick="agCreate()">建档</button>
+        <button class="gray" onclick="agLoadAgents()">翻查代理</button>
+      </div>
+    </div>
+    <table id="agentTable"></table>
+
+    <h3>点位挂代理协议（比例 + 起始结算期定清楚）</h3>
+    <div class="grid">
+      <div><label>代理编号 *</label><input id="agAgtNo"></div>
+      <div><label>点位编号 *</label><input id="agSiteNo"></div>
+      <div><label>分账比例 *（0~1，0.15=15%）</label><input id="agRate" placeholder="0.1500"></div>
+      <div><label>起始生效期 yyyy-MM（留空当期，可未来）</label><input id="agFrom" type="month"></div>
+      <div style="align-self:end"><button onclick="agCreateAgreement()">挂协议</button></div>
+    </div>
+
+    <h3>协议翻查 / 版本链（中途调整下期生效，历史期不重算）</h3>
+    <div class="grid">
+      <div><label>代理编号</label><input id="agQAgtNo"></div>
+      <div><label>点位编号</label><input id="agQSite"></div>
+      <div><label>协议状态</label><select id="agQStatus"><option value="">全部</option><option value="ACTIVE">生效中</option><option value="TERMINATED">已终止</option></select></div>
+      <div style="align-self:end;display:flex;gap:8px">
+        <button class="gray" onclick="agLoadAgreements()">翻查协议</button>
+      </div>
+    </div>
+    <table id="agreementTable"></table>
+    <div class="grid" style="margin-top:8px">
+      <div><label>协议号 *（调比例/终止/查版本）</label><input id="agAgNo"></div>
+      <div><label>调整后比例（0~1）</label><input id="agNewRate" placeholder="0.2000"></div>
+      <div><label>起始期 yyyy-MM（留空下期）</label><input id="agNewFrom" type="month"></div>
+      <div class="span2"><label>原因</label><input id="agReason"></div>
+      <div style="align-self:end;display:flex;gap:8px">
+        <button onclick="agAdjust()">中途调比例（下期生效）</button>
+        <button class="warn" onclick="agTerminate()">终止（下期起不分账）</button>
+        <button class="gray" onclick="agLoadVersions()">查版本链</button>
+      </div>
+    </div>
+    <table id="agreementVersionTable"></table>
+
+    <h3>出结算（按当期实际落架流水，四舍五入到分，尾差标出平台兜底，对平才落单）</h3>
+    <div class="grid">
+      <div><label>结算期 yyyy-MM（留空当期，不能未来）</label><input id="agSettlePeriod" type="month"></div>
+      <div><label>只结某代理编号（留空结全部在册）</label><input id="agSettleAgt"></div>
+      <div style="align-self:end"><button onclick="agSettle()">出结算</button></div>
+    </div>
+    <pre class="event" id="agSettleResult" style="display:none"></pre>
+
+    <h3>账单翻查（代理只见自己）</h3>
+    <div class="grid">
+      <div><label>结算期 yyyy-MM</label><input id="agQPeriod" type="month"></div>
+      <div><label>代理编号（财务可指定）</label><input id="agQAgt2"></div>
+      <div style="align-self:end;display:flex;gap:8px">
+        <button class="gray" onclick="agLoadSettlements()">翻查账单</button>
+        <button class="gray" onclick="agExportSummary()">按期导出 CSV</button>
+      </div>
+    </div>
+    <table id="settlementTable"></table>
+    <div class="grid" style="margin-top:8px">
+      <div><label>结算单号 *（查逐笔分账行/导出）</label><input id="agStNo"></div>
+      <div style="align-self:end;display:flex;gap:8px">
+        <button class="gray" onclick="agDetail()">查账单详情</button>
+        <button class="gray" onclick="agExportLines()">逐笔导出 CSV</button>
+      </div>
+    </div>
+    <div id="agDetail"></div>
+  </div>
 </div>
 
 <script>
@@ -690,7 +767,7 @@ async function doLogin() {
 async function init() {
   // header 占位（登录后填充）
   document.body.insertAdjacentHTML('afterbegin',
-    '<header><h1>户外广告点位与上刊底账 <span class="muted" style="color:#c8d4e6">EVOPS f1·f2·f3·f4·f5·f6·f7·f8</span></h1><span class="who"></span></header>');
+    '<header><h1>户外广告点位与上刊底账 <span class="muted" style="color:#c8d4e6">EVOPS f1·f2·f3·f4·f5·f6·f7·f8·f9</span></h1><span class="who"></span></header>');
   document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
@@ -701,6 +778,7 @@ async function init() {
     if (t.dataset.tab === 'rectify') { rfLoadTypes(); rfLoad(); }
     if (t.dataset.tab === 'playlist') { plLoad(); }
     if (t.dataset.tab === 'install') { inLoadTeams(); inLoad(); document.getElementById('inPeriod').value = new Date().toISOString().slice(0,7); }
+    if (t.dataset.tab === 'agent') { agLoadAgents(); agLoadAgreements(); agLoadSettlements(); }
   });
   document.getElementById('calPeriod').value = new Date().toISOString().slice(0, 7);
   try { const me = await call('GET', '/me'); showApp(me.username); loadSites(); loadSpecs(); } catch (e) { showLogin(); }
@@ -1869,6 +1947,158 @@ async function inReport(){
 function inExport(){
   if(!val('inPeriod')){ toast('先选归属期间'); return; }
   window.open(API + '/install/reports/team-month/export?period=' + encodeURIComponent(val('inPeriod')), '_blank');
+}
+
+// ===== F9 代理协议与结算 =====
+function agCurPeriod() { return new Date().toISOString().slice(0, 7); }
+function agAgentTag(s) {
+  return { ACTIVE: '<span class="tag success">在册</span>', DISABLED: '<span class="tag pending">停用</span>' }[s] || esc(s);
+}
+function agAgrTag(s) {
+  return { ACTIVE: '<span class="tag success">生效中</span>', TERMINATED: '<span class="tag failed">已终止</span>' }[s] || esc(s);
+}
+function agVerTag(s) {
+  return { PENDING: '<span class="tag pending">待生效</span>', EFFECTIVE: '<span class="tag success">生效中</span>',
+    SUPERSEDED: '<span class="tag down">已被新版取代</span>' }[s] || esc(s);
+}
+
+async function agCreate() {
+  if (!val('agName') || !val('agLogin')) { toast('代理名称与绑定登录账号必填'); return; }
+  try {
+    await call('POST', '/agents', { agentName: val('agName'), loginUsername: val('agLogin'),
+      contactName: val('agContact'), contactPhone: val('agPhone') });
+    toast('代理建档成功', true); ['agName','agLogin','agContact','agPhone'].forEach(i => document.getElementById(i).value = '');
+    agLoadAgents();
+  } catch (e) { toast(e.message); }
+}
+
+async function agLoadAgents() {
+  try {
+    const rows = await call('GET', '/agents');
+    document.getElementById('agentTable').innerHTML =
+      '<tr><th>代理编号</th><th>代理名称</th><th>绑定登录账号</th><th>联系人</th><th>电话</th><th>状态</th></tr>'
+      + rows.map(a => `<tr><td>${esc(a.agentNo)}</td><td>${esc(a.agentName)}</td><td>${esc(a.loginUsername)}</td>
+        <td>${esc(a.contactName)}</td><td>${esc(a.contactPhone)}</td><td>${agAgentTag(a.status)}</td></tr>`).join('')
+      || '<tr><td class="muted">无数据（代理账号只能看到自己）</td></tr>';
+  } catch (e) { toast(e.message); }
+}
+
+async function agCreateAgreement() {
+  if (!val('agAgtNo') || !val('agSiteNo') || !val('agRate')) { toast('代理编号、点位编号、比例必填'); return; }
+  try {
+    await call('POST', '/agents/agreements', { agentNo: val('agAgtNo'), siteNo: val('agSiteNo'),
+      commissionRate: val('agRate'), effectiveFromPeriod: val('agFrom') });
+    toast('挂协议成功', true); ['agAgtNo','agSiteNo','agRate','agFrom'].forEach(i => document.getElementById(i).value = '');
+    agLoadAgreements();
+  } catch (e) { toast(e.message); }
+}
+
+async function agLoadAgreements() {
+  let q = [];
+  if (val('agQAgtNo')) q.push('agentNo=' + encodeURIComponent(val('agQAgtNo')));
+  if (val('agQSite')) q.push('siteNo=' + encodeURIComponent(val('agQSite')));
+  if (val('agQStatus')) q.push('status=' + encodeURIComponent(val('agQStatus')));
+  try {
+    const rows = await call('GET', '/agents/agreements' + (q.length ? '?' + q.join('&') : ''));
+    document.getElementById('agreementTable').innerHTML =
+      '<tr><th>协议号</th><th>代理编号</th><th>代理名</th><th>点位</th><th>状态</th><th>当前版本</th><th>起始期</th><th>终止期</th></tr>'
+      + rows.map(a => `<tr><td>${esc(a.agreementNo)}</td><td>${esc(a.agentNo)}</td><td>${esc(a.agentNameSnapshot)}</td>
+        <td>${esc(a.siteNo)}</td><td>${agAgrTag(a.status)}</td><td>v${a.currentVersionNo || '-'}</td>
+        <td>${esc(a.effectiveFromPeriod || '')}</td><td>${esc(a.terminateFromPeriod || '')}</td></tr>`).join('')
+      || '<tr><td class="muted">无数据</td></tr>';
+  } catch (e) { toast(e.message); }
+}
+
+async function agAdjust() {
+  if (!val('agAgNo') || !val('agNewRate')) { toast('协议号与调整后比例必填'); return; }
+  try {
+    await call('POST', '/agents/agreements/' + encodeURIComponent(val('agAgNo')) + '/adjust',
+      { commissionRate: val('agNewRate'), effectiveFromPeriod: val('agNewFrom'), reason: val('agReason') });
+    toast('调整已提交，从下一结算期生效（历史期不重算）', true);
+    agLoadVersions(); agLoadAgreements();
+  } catch (e) { toast(e.message); }
+}
+
+async function agTerminate() {
+  if (!val('agAgNo')) { toast('先填协议号'); return; }
+  try {
+    await call('POST', '/agents/agreements/' + encodeURIComponent(val('agAgNo')) + '/terminate',
+      { effectiveFromPeriod: val('agNewFrom'), reason: val('agReason') });
+    toast('终止已提交，从下一结算期起不再分账', true);
+    agLoadVersions(); agLoadAgreements();
+  } catch (e) { toast(e.message); }
+}
+
+async function agLoadVersions() {
+  if (!val('agAgNo')) { toast('先填协议号'); return; }
+  try {
+    const rows = await call('GET', '/agents/agreements/' + encodeURIComponent(val('agAgNo')) + '/versions');
+    document.getElementById('agreementVersionTable').innerHTML =
+      '<tr><th>版本</th><th>类型</th><th>分账比例</th><th>起始生效期</th><th>状态</th><th>原因</th><th>经手人</th></tr>'
+      + rows.map(v => `<tr><td>v${v.versionNo}</td><td>${esc(v.changeType)}</td><td>${v.commissionRate}</td>
+        <td>${esc(v.effectiveFromPeriod)}</td><td>${agVerTag(v.status)}</td>
+        <td>${esc(v.reason || '')}</td><td>${esc(v.operatorName)}</td></tr>`).join('')
+      || '<tr><td class="muted">无版本</td></tr>';
+  } catch (e) { toast(e.message); }
+}
+
+async function agSettle() {
+  const box = document.getElementById('agSettleResult');
+  try {
+    const run = await call('POST', '/agent-settlements',
+      { period: val('agSettlePeriod'), agentNo: val('agSettleAgt') });
+    const created = run.created.map(s => `${s.settlementNo}  ${s.agentNameSnapshot}  ${s.bizPeriod}  `
+      + `流水 ${s.totalRevenue}  代理 ${s.totalCommission}  平台 ${s.totalPlatform}  尾差 ${s.roundingDiff}  `
+      + (s.balanced === 1 ? '对平' : '未对平')).join('\n');
+    const skipped = run.skipped.map(x => `跳过 ${x.agentName}：${x.reason}`).join('\n');
+    box.style.display = 'block';
+    box.textContent = `结算期 ${run.period}\n新建 ${run.created.length} 张：\n${created || '（无）'}\n跳过 ${run.skipped.length} 个：\n${skipped || '（无）'}`;
+    agLoadSettlements();
+  } catch (e) { box.style.display = 'none'; toast(e.message); }
+}
+
+async function agLoadSettlements() {
+  const period = val('agQPeriod') || agCurPeriod();
+  document.getElementById('agQPeriod').value = period;
+  let url = '/agent-settlements?period=' + encodeURIComponent(period);
+  if (val('agQAgt2')) url += '&agentNo=' + encodeURIComponent(val('agQAgt2'));
+  try {
+    const rows = await call('GET', url);
+    document.getElementById('settlementTable').innerHTML =
+      '<tr><th>结算单号</th><th>代理编号</th><th>代理名</th><th>期间</th><th>笔数</th><th>流水总额</th><th>代理分账</th><th>平台(原始)</th><th>尾差</th><th>平台(兜底)</th><th>对平</th></tr>'
+      + rows.map(s => `<tr${s.balanced === 1 ? '' : ' class="closed"'}><td>${esc(s.settlementNo)}</td><td>${esc(s.agentNo)}</td>
+        <td>${esc(s.agentNameSnapshot)}</td><td>${esc(s.bizPeriod)}</td><td>${s.orderCount}</td>
+        <td>${s.totalRevenue}</td><td><b>${s.totalCommission}</b></td><td>${s.totalPlatformRaw}</td>
+        <td>${s.roundingDiff === 0 ? '0.00' : '<span style=\"color:#c0392b\">' + s.roundingDiff + '</span>'}</td>
+        <td>${s.totalPlatform}</td><td>${s.balanced === 1 ? '<span class=\"tag success\">对平</span>' : '<span class=\"tag failed\">未对平</span>'}</td></tr>`).join('')
+      || '<tr><td class="muted">该期无结算单（代理账号只见自己）</td></tr>';
+  } catch (e) { toast(e.message); }
+}
+
+async function agDetail() {
+  if (!val('agStNo')) { toast('先填结算单号'); return; }
+  try {
+    const v = await call('GET', '/agent-settlements/' + encodeURIComponent(val('agStNo')));
+    const s = v.settlement;
+    document.getElementById('agDetail').innerHTML =
+      `<h3 style="margin-top:10px">结算单 ${esc(s.settlementNo)}（${esc(s.agentNameSnapshot)} · ${esc(s.bizPeriod)}）`
+      + `流水 ${s.totalRevenue} ｜ 代理 ${s.totalCommission} ｜ 平台原始 ${s.totalPlatformRaw} ｜ 尾差 ${s.roundingDiff} ｜ 平台兜底 ${s.totalPlatform} ｜ ${s.balanced === 1 ? '对平' : '未对平'}</h3>`
+      + '<table><tr><th>上刊单号</th><th>点位</th><th>画面</th><th>协议版本</th><th>比例</th><th>流水</th><th>代理分账</th><th>平台(原始)</th><th>行尾差</th><th>平台(兜底)</th></tr>'
+      + v.lines.map(l => `<tr><td>${esc(l.orderNo)}</td><td>${esc(l.siteNo)}</td><td>${esc(l.creativeNameSnapshot)}</td>
+        <td>v${l.agreementVersionNo}</td><td>${l.commissionRate}</td><td>${l.revenueAmount}</td>
+        <td><b>${l.commissionAmount}</b></td><td>${l.platformAmountRaw}</td>
+        <td>${l.lineRoundingDiff === 0 ? '0.00' : '<span style=\"color:#c0392b\">' + l.lineRoundingDiff + '</span>'}</td>
+        <td>${l.platformAmount}</td></tr>`).join('') + '</table>';
+  } catch (e) { toast(e.message); }
+}
+
+function agExportSummary() {
+  const period = val('agQPeriod') || agCurPeriod();
+  window.open(API + '/agent-settlements/export?period=' + encodeURIComponent(period), '_blank');
+}
+function agExportLines() {
+  if (!val('agStNo')) { toast('先填结算单号'); return; }
+  window.open(API + '/agent-settlements/' + encodeURIComponent(val('agStNo')) + '/export', '_blank');
 }
 
 init();
